@@ -4,15 +4,18 @@ header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
 header('Cache-Control: post-check=0, pre-check=0', false);
 header('Pragma: no-cache');
 
+// Include database connection
+require_once 'db_connection.php';
+
 // Check if all required parameters are present
-if (!isset($_POST['shareId']) || !isset($_POST['imageData'])) {
+if (!isset($_POST['shareId']) || !isset($_POST['contentUrl'])) {
     http_response_code(400);
     echo "ERROR: Missing required parameters";
     exit;
 }
 
 $shareId = $_POST['shareId'];
-$imageData = $_POST['imageData'];
+$contentUrl = $_POST['contentUrl'];
 
 // Validate the share ID (simple alphanumeric check)
 if (!preg_match('/^[a-zA-Z0-9_-]+$/', $shareId)) {
@@ -21,37 +24,21 @@ if (!preg_match('/^[a-zA-Z0-9_-]+$/', $shareId)) {
     exit;
 }
 
-// Create directory to store frames if it doesn't exist
-$frameDir = 'frames';
-if (!file_exists($frameDir)) {
-    mkdir($frameDir, 0755, true);
+// Escape strings for SQL safety
+$shareId = escape_string($conn, $shareId);
+$contentUrl = escape_string($conn, $contentUrl);
+
+// Insert or update the content URL for this share ID
+$sql = "INSERT INTO screen_shares (share_id, content_url) 
+        VALUES ('$shareId', '$contentUrl') 
+        ON DUPLICATE KEY UPDATE content_url = '$contentUrl', last_update = CURRENT_TIMESTAMP";
+
+if (mysqli_query($conn, $sql)) {
+    echo "OK";
+} else {
+    http_response_code(500);
+    echo "ERROR: Database operation failed";
 }
 
-// Create a file name based on the share ID
-$filePath = $frameDir . '/' . $shareId . '.txt';
-
-// Only update the timestamp every second instead of every frame to reduce disk I/O
-$timeFilePath = $frameDir . '/' . $shareId . '_time.txt';
-$currentTime = time();
-$updateTimestamp = true;
-
-// If the timestamp file exists, check if we need to update it
-if (file_exists($timeFilePath)) {
-    $lastUpdateTime = (int) file_get_contents($timeFilePath);
-    // Only update the timestamp if more than 1 second has passed
-    if ($currentTime - $lastUpdateTime < 1) {
-        $updateTimestamp = false;
-    }
-}
-
-// Save the image data to file - use FILE_BINARY flag for better performance with binary data
-file_put_contents($filePath, $imageData, LOCK_EX);
-
-// Update the timestamp file to track active sessions (but only once per second)
-if ($updateTimestamp) {
-    file_put_contents($timeFilePath, $currentTime, LOCK_EX);
-}
-
-// Return success with minimal processing
-echo "OK";
+mysqli_close($conn);
 ?>

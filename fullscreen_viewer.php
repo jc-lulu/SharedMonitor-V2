@@ -33,10 +33,10 @@ $shareId = $_GET['id'];
             justify-content: center;
         }
 
-        #screenImage {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
+        #contentFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
         }
 
         #waitingMessage {
@@ -113,7 +113,7 @@ $shareId = $_GET['id'];
     <div id="status">Waiting for connection...</div>
     <div id="screen">
         <p id="waitingMessage">Connecting to screen share session...</p>
-        <img id="screenImage" style="display: none;" alt="Shared screen" />
+        <iframe id="contentFrame" style="display: none;" allowfullscreen></iframe>
     </div>
     <div id="controls">
         <button id="refreshBtn">Refresh</button>
@@ -123,7 +123,7 @@ $shareId = $_GET['id'];
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            const screenImage = document.getElementById('screenImage');
+            const contentFrame = document.getElementById('contentFrame');
             const status = document.getElementById('status');
             const waitingMessage = document.getElementById('waitingMessage');
             const refreshBtn = document.getElementById('refreshBtn');
@@ -136,6 +136,7 @@ $shareId = $_GET['id'];
             let refreshIntervalId;
             let reconnectAttempts = 0;
             const maxReconnectAttempts = 5;
+            let lastUrl = '';
 
             // Auto-enter fullscreen mode on load (browsers may block this)
             try {
@@ -145,7 +146,7 @@ $shareId = $_GET['id'];
                 console.log("Auto fullscreen not allowed. User needs to click the fullscreen button.");
             }
 
-            // Start receiving frames
+            // Start receiving content URLs
             startReceiving();
 
             refreshBtn.addEventListener('click', function () {
@@ -190,10 +191,10 @@ $shareId = $_GET['id'];
                 status.textContent = 'Connecting...';
                 status.style.color = '#f39c12';
 
-                refreshIntervalId = setInterval(getLatestFrame, 16.67); // ~60fps (1000ms/60 = 16.67ms per frame)
+                refreshIntervalId = setInterval(getLatestUrl, 1000); // Check every second
             }
 
-            function getLatestFrame() {
+            function getLatestUrl() {
                 fetch('get_frame.php?id=' + encodeURIComponent(shareId) + '&t=' + new Date().getTime())
                     .then(response => {
                         if (!response.ok) {
@@ -211,14 +212,14 @@ $shareId = $_GET['id'];
                             if (isConnected) {
                                 waitingMessage.textContent = 'Waiting for sharer to resume...';
                                 waitingMessage.style.display = 'block';
-                                screenImage.style.display = 'none';
+                                contentFrame.style.display = 'none';
                             } else {
                                 waitingMessage.textContent = 'Waiting for sharer to start...';
                             }
                             return;
                         }
 
-                        // We have a valid frame
+                        // We have a valid URL
                         if (!isConnected) {
                             isConnected = true;
                             status.textContent = 'Connected';
@@ -226,9 +227,13 @@ $shareId = $_GET['id'];
                             reconnectAttempts = 0;
                         }
 
-                        screenImage.src = data;
-                        screenImage.style.display = 'block';
-                        waitingMessage.style.display = 'none';
+                        // Only update iframe if URL has changed
+                        if (data !== lastUrl) {
+                            lastUrl = data;
+                            contentFrame.src = data;
+                            contentFrame.style.display = 'block';
+                            waitingMessage.style.display = 'none';
+                        }
                     })
                     .catch(error => {
                         handleError('Connection error: ' + error.message);
